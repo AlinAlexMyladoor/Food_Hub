@@ -1,6 +1,9 @@
+
 // MenuPage.tsx
 import React, { useMemo, useState, useEffect } from "react";
 import { motion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 
 type MenuItem = {
   id: number;
@@ -26,7 +29,7 @@ const MOCK_MENU: MenuItem[] = [
     category: "Starters",
     isVeg: true,
   },
-  {
+ {
     id: 2,
     name: "Spring Rolls",
     description: "Crispy veg rolls",
@@ -44,7 +47,7 @@ const MOCK_MENU: MenuItem[] = [
     ingredients: ["Chicken", "Chili", "Garlic"],
     price: 279,
     image:
-      "https://images.unsplash.com/photo-1605475127008-8f9d9b1a3b8a?auto=format&fit=crop&w=600&q=80",
+      "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRWjnfj-sbyAvZp2AnKdY7uIsbdW90h48NudA&s",
     category: "Starters",
     isVeg: false,
   },
@@ -103,6 +106,7 @@ const MOCK_MENU: MenuItem[] = [
     category: "Continental",
     isVeg: false,
   },
+
 ];
 
 const CATEGORIES = [
@@ -113,7 +117,6 @@ const CATEGORIES = [
   "Continental",
 ];
 
-// NEW: Define which categories get the dietary filter dropdown
 const CATEGORIES_WITH_DIET_FILTER = ["Starters", "Main Course", "Continental"];
 
 type CartItem = {
@@ -122,24 +125,63 @@ type CartItem = {
 };
 
 const MenuPage: React.FC = () => {
-  const [selectedTable, setSelectedTable] = useState<number | null>(null);
-  const [activeCategory, setActiveCategory] = useState<string>("Starters");
+const navigate = useNavigate();
+const location = useLocation();
 
- 
-  const [dietaryFilters, setDietaryFilters] = useState<Record<string, "all" | "veg">>({});
+type RestoredState = {
+  table: number;
+  items: Array<{
+    id: number;
+    qty: number;
+  }>;
+};
 
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [orderPlaced, setOrderPlaced] = useState(false);
-  const [quantities, setQuantities] = useState<Record<number, number>>({});
+const restoredState = location.state as RestoredState | null;
+
+const [selectedTable, setSelectedTable] = useState<number | null>(restoredState?.table ?? null);
+const [cart, setCart] = useState<CartItem[]>(
+  restoredState?.items?.map((item) => ({ id: item.id, qty: item.qty })) ?? []
+);
+
+const [quantities, setQuantities] = useState<Record<number, number>>(() => {
+  const initial: Record<number, number> = {};
+  restoredState?.items?.forEach((item) => {
+    initial[item.id] = item.qty;
+  });
+  return initial;
+});
+
+const [activeCategory, setActiveCategory] = useState<string>("Starters");
+const [dietaryFilters, setDietaryFilters] = useState<Record<string, "all" | "veg" | "non-veg">>({});
+const [orderPlaced, setOrderPlaced] = useState(false);
+
 
   useEffect(() => {
-    const visibleIds = MOCK_MENU
-      .filter(m => m.category === activeCategory)
-      .map(m => m.id);
+    const state = location.state;
+    if (state?.items && state?.table) {
+      setSelectedTable(state.table);
 
-    setQuantities(prev => {
+      const newCart = state.items.map((item: any) => ({
+        id: item.id,
+        qty: item.qty,
+      }));
+
+      const newQuantities: Record<number, number> = {};
+      state.items.forEach((item: any) => {
+        newQuantities[item.id] = item.qty;
+      });
+
+      setCart(newCart);
+      setQuantities((prev) => ({ ...prev, ...newQuantities }));
+    }
+  }, [location.state]);
+
+  useEffect(() => {
+    
+    const visibleIds = MOCK_MENU.filter((m) => m.category === activeCategory).map((m) => m.id);
+    setQuantities((prev) => {
       const next = { ...prev };
-      visibleIds.forEach(id => {
+      visibleIds.forEach((id) => {
         if (!next[id]) next[id] = 1;
       });
       return next;
@@ -147,30 +189,26 @@ const MenuPage: React.FC = () => {
   }, [activeCategory]);
 
   const visibleItems = useMemo(() => {
-    const currentFilter = dietaryFilters[activeCategory] || "all"; 
-    return MOCK_MENU.filter(item => {
-      if (item.category !== activeCategory) {
-        return false;
-      }
-      if (currentFilter === "veg") {
-        return item.isVeg;
-      }
-      return true; // 'all' case
+    const currentFilter = dietaryFilters[activeCategory] || "all";
+    return MOCK_MENU.filter((item) => {
+      if (item.category !== activeCategory) return false;
+      if (currentFilter === "veg") return item.isVeg;
+      if (currentFilter === "non-veg") return !item.isVeg;
+      return true;
     });
   }, [activeCategory, dietaryFilters]);
 
-  const getQty = (id: number) => {
-    return quantities[id] ?? 1;
-  };
+  const getQty = (id: number) => quantities[id] ?? 1;
 
   const setVisibleQty = (id: number, qty: number) => {
     const safe = Math.max(1, Math.floor(qty));
-    setQuantities(prev => ({ ...prev, [id]: safe }));
+    setQuantities((prev) => ({ ...prev, [id]: safe }));
 
-    setCart(prev => {
-      const exists = prev.find(it => it.id === id);
-      if (!exists) return prev;
-      return prev.map(it => (it.id === id ? { ...it, qty: safe } : it));
+    // If item exists in cart, update its qty so totals reflect change.
+    setCart((prev) => {
+      const exists = prev.find((it) => it.id === id);
+      if (!exists) return prev; // do not add a new item here
+      return prev.map((it) => (it.id === id ? { ...it, qty: safe } : it));
     });
   };
 
@@ -178,67 +216,72 @@ const MenuPage: React.FC = () => {
     if (!selectedTable) return;
     setVisibleQty(id, getQty(id) + 1);
   };
-
   const decQty = (id: number) => {
     if (!selectedTable) return;
-    const newQty = Math.max(1, getQty(id) - 1);
-    setVisibleQty(id, newQty);
+    setVisibleQty(id, Math.max(1, getQty(id) - 1));
   };
 
   const addToCart = (id: number) => {
     if (!selectedTable) return;
     const qty = getQty(id);
-    setCart(prev => {
-      const exists = prev.find(p => p.id === id);
-      if (exists) return prev.map(p => (p.id === id ? { ...p, qty } : p));
+    setCart((prev) => {
+      const exists = prev.find((p) => p.id === id);
+      if (exists) {
+        // update qty for existing item
+        return prev.map((p) => (p.id === id ? { ...p, qty } : p));
+      }
+      // new distinct item added
       return [...prev, { id, qty }];
     });
   };
 
-  const setCartQty = (id: number, qty: number) => {
-    if (qty <= 0) {
-      setCart(prev => prev.filter(it => it.id !== id));
-      return;
-    }
-    setCart(prev => {
-      const exists = prev.find(it => it.id === id);
-      if (exists) return prev.map(it => (it.id === id ? { ...it, qty } : it));
-      return [...prev, { id, qty }];
-    });
-    setQuantities(prev => ({ ...prev, [id]: Math.max(1, qty) }));
+  // Remove item from cart (functional Remove button)
+  const removeFromCart = (id: number) => {
+    setCart((prev) => prev.filter((it) => it.id !== id));
+    // optional: reset visible qty back to 1 (uncomment if desired)
+    // setQuantities(prev => ({ ...prev, [id]: 1 }));
   };
 
+  // Build cart details for rendering & passing to confirmation page
   const cartDetails = useMemo(() => {
     let Total = 0;
-    let itemCount = 0;
     const items = cart.map((ci) => {
       const menu = MOCK_MENU.find((m) => m.id === ci.id)!;
       const itemTotal = menu.price * ci.qty;
       Total += itemTotal;
-      itemCount += ci.qty;
       return {
         ...menu,
         qty: ci.qty,
         itemTotal,
       };
     });
+    const itemCount = cart.length; // distinct items only
     return { items, Total, itemCount };
   }, [cart]);
 
+  // On checkout: navigate to /confirm with state, then clear cart
   const checkout = () => {
     if (!selectedTable || cart.length === 0) return;
+
+    // snapshot to pass to confirmation page
+    const snapshot = {
+      table: selectedTable,
+      items: cartDetails.items,
+      total: cartDetails.Total,
+    };
+
+    // navigate to confirmation page with state
+    navigate("/confirm", { state: snapshot });
+
+    // mock clear (keep UX same as before)
     setOrderPlaced(true);
     setCart([]);
     setTimeout(() => setOrderPlaced(false), 3000);
   };
 
   return (
-    <motion.div
-      className="w-full max-w-7xl mx-auto py-8 grid grid-cols-1 lg:grid-cols-4 gap-8 px-4"
-      initial={{ opacity: 0, y: 24 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-    >
+    <motion.div className="w-full max-w-7xl mx-auto py-8 grid grid-cols-1 lg:grid-cols-4 gap-8 px-4"
+      initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
       {/* Sidebar */}
       <aside className="lg:col-span-1 bg-white rounded-2xl p-6 shadow border border-gray-200 sticky top-6 h-fit">
         <div className="mt-6">
@@ -255,6 +298,7 @@ const MenuPage: React.FC = () => {
           </select>
           <p className="text-xs text-gray-500 mt-2">Select a table to enable ordering.</p>
         </div>
+
         <br />
         <h3 className="font-bold text-lg text-blue-600 mb-4">Categories</h3>
 
@@ -272,9 +316,6 @@ const MenuPage: React.FC = () => {
             </li>
           ))}
         </ul>
-
-        {/* REMOVED: Global veg/non-veg toggle is no longer here */}
-
       </aside>
 
       {/* Products grid */}
@@ -282,15 +323,14 @@ const MenuPage: React.FC = () => {
         <div className="sm:col-span-2">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-2xl font-bold">{activeCategory}</h2>
-            
-            {/* NEW: Conditional dropdown for dietary preference */}
+
             {CATEGORIES_WITH_DIET_FILTER.includes(activeCategory) && (
               <div>
                 <label htmlFor="diet-filter" className="text-sm font-medium mr-2">Show:</label>
                 <select
                   id="diet-filter"
-                  value={dietaryFilters[activeCategory] || 'all'}
-                  onChange={(e) => setDietaryFilters(prev => ({ ...prev, [activeCategory]: e.target.value as 'all' | 'veg' }))}
+                  value={dietaryFilters[activeCategory] || "all"}
+                  onChange={(e) => setDietaryFilters((prev) => ({ ...prev, [activeCategory]: e.target.value as any }))}
                   className="border rounded-lg px-3 py-1 bg-white text-sm"
                 >
                   <option value="all">All Items</option>
@@ -304,52 +344,38 @@ const MenuPage: React.FC = () => {
 
         {visibleItems.map((item) => {
           const qtyVisible = getQty(item.id);
-          const inCart = cart.find(c => c.id === item.id);
+          const inCart = cart.find((c) => c.id === item.id);
           return (
-            <motion.div
-              key={item.id}
-              className="bg-white rounded-2xl p-4 shadow border border-gray-200 flex flex-col items-center text-center"
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
+            <motion.div key={item.id} className="bg-white rounded-2xl p-4 shadow border border-gray-200 flex flex-col items-center text-center"
+              initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
               <img src={item.image} alt={item.name} className="w-40 h-32 object-cover rounded-lg mb-3" />
               <h3 className="font-semibold text-lg">{item.name}</h3>
               <p className="text-xs text-gray-500 mb-2">{item.description}</p>
-              <div className="text-xs text-gray-600 mb-2">
-                <strong>Ingredients:</strong> {item.ingredients.join(", ")}
-              </div>
+              <div className="text-xs text-gray-600 mb-2"><strong>Ingredients:</strong> {item.ingredients.join(", ")}</div>
+
               <div className="flex items-center gap-3 mb-3">
                 <span className="font-bold text-blue-600">₹{item.price}</span>
                 <span className={`text-xs px-2 py-1 rounded-full ${item.isVeg ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
                   {item.isVeg ? "Veg" : "Non-Veg"}
                 </span>
               </div>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => decQty(item.id)}
-                  disabled={!selectedTable || qtyVisible <= 1}
-                  className={`w-9 h-9 rounded-full border flex items-center justify-center font-bold ${!selectedTable || qtyVisible <= 1 ? "opacity-40 cursor-not-allowed" : "hover:bg-gray-100"}`}
-                >
-                  −
-                </button>
+
+              {/* Quantity controls live on product card only */}
+              <div className="flex items-center gap-3 mb-3">
+                <button onClick={() => decQty(item.id)} disabled={!selectedTable || qtyVisible <= 1}
+                  className={`w-9 h-9 rounded-full border flex items-center justify-center font-bold ${!selectedTable || qtyVisible <= 1 ? "opacity-40 cursor-not-allowed" : "hover:bg-gray-100"}`}>−</button>
                 <div className="min-w-[38px] text-center font-semibold">{qtyVisible}</div>
-                <button
-                  onClick={() => incQty(item.id)}
-                  disabled={!selectedTable}
-                  className={`w-9 h-9 rounded-full border flex items-center justify-center font-bold ${!selectedTable ? "opacity-40 cursor-not-allowed" : "hover:bg-gray-100"}`}
-                >
-                  +
-                </button>
-              </div>
-              <div className="mt-3 text-sm text-gray-700">
-                Total: <span className="font-semibold">₹{item.price * qtyVisible}</span>
+                <button onClick={() => incQty(item.id)} disabled={!selectedTable}
+                  className={`w-9 h-9 rounded-full border flex items-center justify-center font-bold ${!selectedTable ? "opacity-40 cursor-not-allowed" : "hover:bg-gray-100"}`}>+</button>
               </div>
 
-              {/* UPDATED: Simplified Add/Remove button logic */}
+              <div className="mt-3 text-sm text-gray-700">Total: <span className="font-semibold">₹{item.price * qtyVisible}</span></div>
+
+              {/* Add to cart / Remove from cart */}
               <div className="mt-3 w-full flex justify-center">
                 {inCart ? (
                   <button
-                    onClick={() => setCartQty(item.id, 0)} // Setting qty to 0 removes it
+                    onClick={() => removeFromCart(item.id)}
                     className="px-4 py-2 rounded-full font-bold text-red-600 bg-red-100 hover:bg-red-200"
                   >
                     Remove
@@ -367,11 +393,7 @@ const MenuPage: React.FC = () => {
             </motion.div>
           );
         })}
-        {visibleItems.length === 0 && (
-          <div className="sm:col-span-2 text-center text-gray-500 py-10">
-            No items match your filter.
-          </div>
-        )}
+        {visibleItems.length === 0 && <div className="sm:col-span-2 text-center text-gray-500 py-10">No items match your filter.</div>}
       </main>
 
       {/* Cart / Checkout */}
@@ -388,31 +410,6 @@ const MenuPage: React.FC = () => {
                   <div className="font-medium">{it.name}</div>
                   <div className="text-xs text-gray-500">Table {selectedTable}</div>
                   <div className="text-xs text-gray-600">₹{it.price} × {it.qty} = <span className="font-semibold">₹{it.itemTotal}</span></div>
-                </div>
-                <div className="flex flex-col items-center gap-1">
-                  <div className="flex gap-1">
-                    <button
-                      onClick={() => setCartQty(it.id, Math.max(1, it.qty - 1))}
-                      className={`w-7 h-7 rounded border ${!selectedTable ? "opacity-40 cursor-not-allowed" : ""}`}
-                      disabled={!selectedTable}
-                    >
-                      −
-                    </button>
-                    <div className="w-7 text-center">{it.qty}</div>
-                    <button
-                      onClick={() => setCartQty(it.id, it.qty + 1)}
-                      className={`w-7 h-7 rounded border ${!selectedTable ? "opacity-40 cursor-not-allowed" : ""}`}
-                      disabled={!selectedTable}
-                    >
-                      +
-                    </button>
-                  </div>
-                  <button
-                    onClick={() => setCartQty(it.id, 0)}
-                    className="text-xs text-red-500 hover:underline"
-                  >
-                    Remove
-                  </button>
                 </div>
               </li>
             ))}
@@ -442,3 +439,5 @@ const MenuPage: React.FC = () => {
 };
 
 export default MenuPage;
+
+ 
