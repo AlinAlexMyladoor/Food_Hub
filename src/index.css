@@ -1,0 +1,36 @@
+/* Modern background animations */
+@keyframes rotate-slow {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+@keyframes rotate-reverse {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(-360deg); }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-30px); }
+}
+@keyframes float-delay {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(30px); }
+}
+.animate-rotate-slow {
+  animation: rotate-slow 18s linear infinite;
+}
+.animate-rotate-reverse {
+  animation: rotate-reverse 22s linear infinite;
+}
+.animate-float {
+  animation: float 7s ease-in-out infinite;
+}
+.animate-float-delay {
+  animation: float-delay 9s ease-in-out infinite;
+}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-gray-50 text-gray-900;
+}
