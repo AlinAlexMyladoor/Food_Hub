@@ -1,3 +1,5 @@
+
+// OrderConfirmation.tsx
 import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -14,13 +16,11 @@ type ConfirmState = {
   total: number;
 };
 
-type RestoredState = {
-  table: number;
-  items: Array<{
-    id: number;
-    qty: number;
-  }>;
-};
+const STORAGE_KEY = "myapp_cart_v1";
+const STORAGE_TABLE = "myapp_table_v1";
+const ORDERS_STORAGE = "myapp_orders_v1";
+
+const generateOrderId = () => Date.now(); // simple unique id. Replace with better id in production.
 
 const OrderConfirmation: React.FC = () => {
   const location = useLocation();
@@ -45,19 +45,40 @@ const OrderConfirmation: React.FC = () => {
   }
 
   const handleConfirm = () => {
+    try {
+      // Build order object
+      const newOrder = {
+        id: generateOrderId(),
+        createdAt: new Date().toISOString(),
+        table: state.table,
+        items: state.items.map((i) => ({ id: i.id, name: i.name, qty: i.qty, price: i.price, itemTotal: i.itemTotal })),
+        total: state.total,
+        status: "pending" as "pending" | "served",
+      };
+
+      // Read existing orders
+      const raw = localStorage.getItem(ORDERS_STORAGE);
+      const orders = raw ? (JSON.parse(raw) as any[]) : [];
+
+      // Append and save
+      orders.push(newOrder);
+      localStorage.setItem(ORDERS_STORAGE, JSON.stringify(orders));
+
+      // Clear cart storage (finalize)
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(STORAGE_TABLE);
+    } catch (err) {
+      // swallow errors for now, but you can show a toast to user
+      console.error("Could not save order to localStorage", err);
+    }
+
+    // Go to thank-you page (pass table if you want)
     navigate("/thank-you", { state: { table: state.table } });
   };
 
   const handleBack = () => {
-    const restoredState: RestoredState = {
-      table: state.table,
-      items: state.items.map((item) => ({
-        id: item.id,
-        qty: item.qty,
-      })),
-    };
-
-    navigate("/menu", { state: restoredState });
+    // Go back (keeps history). Menu page reads localStorage and location.state if needed.
+    navigate(-1);
   };
 
   return (
@@ -92,13 +113,8 @@ const OrderConfirmation: React.FC = () => {
       </div>
 
       <div className="flex gap-3">
-        <button onClick={handleBack} className="px-4 py-2 rounded border">
-          Back
-        </button>
-        <button
-          onClick={handleConfirm}
-          className="px-4 py-2 rounded bg-green-600 text-white"
-        >
+        <button onClick={handleBack} className="px-4 py-2 rounded border">Back</button>
+        <button onClick={handleConfirm} className="px-4 py-2 rounded bg-green-600 text-white">
           Confirm Order
         </button>
       </div>
@@ -107,3 +123,4 @@ const OrderConfirmation: React.FC = () => {
 };
 
 export default OrderConfirmation;
+

@@ -1,4 +1,3 @@
-
 // App.tsx
 import React, { useState, useEffect, createContext, useContext } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
@@ -10,13 +9,13 @@ import OrderPage from "./pages/OrderPage.tsx";
 import OrderStatusPage from "./pages/OrderStatusPage.tsx";
 import WaiterDashboard from "./pages/WaiterDashboard.tsx";
 import AdminDashboard from "./pages/AdminDashboard.tsx";
+import KitchenDashboard from "./pages/KitchenDashboard.tsx";
 import LoginPage from "./pages/LoginPage.tsx";
 import RegisterPage from "./pages/RegisterPage.tsx";
 import RoleGuard from "./components/RoleGuard.tsx";
-// NEW: OrderConfirmation page import
 import OrderConfirmation from "./pages/OrderConfirmation.tsx";
 
-type Role = "customer" | "waiter" | "admin";
+export type Role = "customer" | "waiter" | "admin" | "kitchen";
 
 type AuthContextType = {
   role: Role | null;
@@ -25,6 +24,7 @@ type AuthContextType = {
   setUsername: (u: string | null) => void;
   logout: () => void;
 };
+
 const AuthContext = createContext<AuthContextType>({
   role: null,
   setRole: () => {},
@@ -32,6 +32,7 @@ const AuthContext = createContext<AuthContextType>({
   setUsername: () => {},
   logout: () => {},
 });
+
 export const useAuth = () => useContext(AuthContext);
 
 const App: React.FC = () => {
@@ -41,6 +42,17 @@ const App: React.FC = () => {
   const [username, setUsername] = useState<string | null>(() => {
     return localStorage.getItem("username") || null;
   });
+
+  const location = useLocation();
+  const isAuth = !!role && !!username;
+
+  const dashboardPath = role === "admin"
+    ? "/admin"
+    : role === "waiter"
+    ? "/waiter"
+    : role === "kitchen"
+    ? "/kitchen"
+    : "/";
 
   useEffect(() => {
     if (role) localStorage.setItem("role", role);
@@ -53,25 +65,25 @@ const App: React.FC = () => {
   }, [username]);
 
   const logout = () => {
+    // Clear auth
     setRole(null);
     setUsername(null);
     localStorage.removeItem("role");
     localStorage.removeItem("username");
+
+    // Clear app-specific data
+    localStorage.removeItem("myapp_cart_v1");
+    localStorage.removeItem("myapp_table_v1");
+    localStorage.removeItem("myapp_orders_v1");
+
+    // Optionally: Clear all localStorage if your app only uses it
+    // localStorage.clear();
   };
 
-  // Only allow access to login/register if not authenticated
-  // Otherwise, redirect to dashboard for their role
-  const location = useLocation();
-  const isAuth = !!role && !!username;
-  const dashboardPath = role === "admin" ? "/admin" : role === "waiter" ? "/waiter" : "/";
-
-  // If not logged in, always show login page except for /register
-  // (keeps existing behavior)
   if (!isAuth && location.pathname !== "/login" && location.pathname !== "/register") {
     return <Navigate to="/login" replace />;
   }
 
-  // If logged in and on login/register, redirect to dashboard
   if (isAuth && (location.pathname === "/login" || location.pathname === "/register")) {
     return <Navigate to={dashboardPath} replace />;
   }
@@ -83,15 +95,11 @@ const App: React.FC = () => {
         <Header />
         <main className="flex-1 flex flex-col items-center justify-center transition-all duration-700 ease-in-out">
           <Routes>
-            {/* public / customer routes */}
+            {/* Public / customer routes */}
             <Route path="/" element={<MenuPage />} />
             <Route path="/order" element={<OrderPage />} />
             <Route path="/order/:id" element={<OrderStatusPage />} />
-
-            {/* Order confirmation route (receives state from MenuPage via navigate("/confirm", { state })) */}
             <Route path="/confirm" element={<OrderConfirmation />} />
-
-            {/* Thank you - simple static route (replace this with a page component if needed) */}
             <Route
               path="/thank-you"
               element={
@@ -102,7 +110,7 @@ const App: React.FC = () => {
               }
             />
 
-            {/* Role-protected routes */}
+            {/* Role-protected dashboards */}
             <Route
               path="/waiter"
               element={
@@ -111,6 +119,8 @@ const App: React.FC = () => {
                 </RoleGuard>
               }
             />
+            <Route path="/kitchen" element={<KitchenDashboard />} />
+
             <Route
               path="/admin"
               element={
@@ -124,8 +134,8 @@ const App: React.FC = () => {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
 
-            {/* fallback */}
-            <Route path="*" element={<Navigate to={dashboardPath} />} />
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to={dashboardPath} replace />} />
           </Routes>
         </main>
         <Footer />
@@ -135,4 +145,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-
